@@ -438,13 +438,13 @@ ufmn_followups <- ufmn_functional %>%
       walking_selfcare + swallowing + communication + breathing
     }
   ) %>%
-  select(pid, fecha_visita, cortar, kings_c, mitos)
+  select(pid, fecha_visita, portador_peg, cortar, kings_c, mitos)
 
 ufmn_functional %<>%
   left_join(ufmn_followups, by = c("pid", "fecha_visita")) %>%
   mutate(
-    cortar_con_peg = ifelse(cortar == cortar_con_peg, cortar_con_peg, NA),
-    cortar_sin_peg = ifelse(cortar == cortar_sin_peg, cortar_sin_peg, NA)
+    cortar_con_peg = ifelse(portador_peg, cortar_con_peg, NA),
+    cortar_sin_peg = ifelse(!portador_peg, cortar_sin_peg, NA)
   ) %>%
   rowwise() %>%
   mutate(
