@@ -8,7 +8,7 @@ linkela_users <- read_xlsx(linkela_users_path, na = "NULL") %>%
     rename(pid = "id") %>%
     mutate(
         birthdate = parse_date(birthdate),
-        tax_number = gsub("-", "", tax_number),
+        tax_number = str_replace(tax_number, "-", ""),
         last_login_at = parse_datetime(last_login_at),
         gender = factor(gender, labels = c("M", "F")),
         cuidador = case_match(cuidador, "Yes" ~ TRUE, "No" ~ FALSE)
@@ -176,11 +176,11 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") %>%
     ) %>%
     rowwise() %>%
     mutate(
-        bulbar_score = speech + salivation + swallowing,
-        fmotor_peg_score = handwriting + cutting_peg + dressing,
-        fmotor_nopeg_score = handwriting + cutting_nopeg + dressing,
-        gmotor_score = bed + walking + stairs,
-        resp_score = dyspnea + orthopnea + resp_insuf,
-        total_peg_score = bulbar_score + fmotor_peg_score + gmotor_score + resp_score,
-        total_nopeg_score = bulbar_score + fmotor_nopeg_score + gmotor_score + resp_score
+        alsfrs_bulbar = speech + salivation + swallowing,
+        alsfrs_fmotor_peg = handwriting + cutting_peg + dressing,
+        alsfrs_fmotor_nopeg = handwriting + cutting_nopeg + dressing,
+        alsfrs_gmotor = bed + walking + stairs,
+        alsfrs_resp = dyspnea + orthopnea + resp_insuf,
+        alsfrs_total_peg = alsfrs_bulbar + alsfrs_fmotor_peg + alsfrs_gmotor + alsfrs_resp,
+        alsfrs_total_nopeg = alsfrs_bulbar + alsfrs_fmotor_nopeg + alsfrs_gmotor + alsfrs_resp
     )
