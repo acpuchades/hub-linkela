@@ -3,9 +3,9 @@ library(tidyverse)
 
 linkela_users_path <- "data/2023.02.16_LinkELA_users_v5.xlsx"
 linkela_alsfrs_path <- "data/2023.02.14_LinkELA_Formulario-38.xlsx"
+linkela_analytics_path <- "data/2023.02.23_LinkELA_Analytics.xlsx"
 
-linkela_users <- read_xlsx(linkela_users_path, na = "NULL") %>%
-    rename(pid = "id") %>%
+linkela_users <- read_xlsx(linkela_users_path, na = "NULL") |>
     mutate(
         birthdate = parse_date(birthdate),
         tax_number = str_replace(tax_number, "-", ""),
@@ -14,10 +14,10 @@ linkela_users <- read_xlsx(linkela_users_path, na = "NULL") %>%
         cuidador = case_match(cuidador, "Yes" ~ TRUE, "No" ~ FALSE)
     )
 
-linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") %>%
-    select(-starts_with("Pregunta sin etiqueta")) %>%
+linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
+    select(-starts_with("Pregunta sin etiqueta")) |>
     rename(
-        pid = "Pacient",
+        user_id = "Pacient",
         departament = "Departament",
         value_date = "Data Valor",
         answer_date = "Data resposta",
@@ -34,7 +34,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") %>%
         dyspnea = "10.Disnea (sensación de falta de aire)",
         orthopnea = "11.Ortopnea (falta de aire estando acostado)",
         resp_insuf = "12.Insuficiencia respiratoria",
-    ) %>%
+    ) |>
     mutate(
         across(ends_with("_date"), \(x) parse_datetime(x, format = "%d/%m/%Y %H:%M:%S")),
         speech = recode(speech,
@@ -169,12 +169,12 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") %>%
             "Uso continuo de BiPAP, noche y día" = 1L,
             "Sense resposta" = NA_integer_
         )
-    ) %>%
+    ) |>
     relocate(
         cutting,
         .after = handwriting
-    ) %>%
-    rowwise() %>%
+    ) |>
+    rowwise() |>
     mutate(
         alsfrs_bulbar = speech + salivation + swallowing,
         alsfrs_fmotor_peg = handwriting + cutting_peg + dressing,
@@ -184,3 +184,22 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") %>%
         alsfrs_total_peg = alsfrs_bulbar + alsfrs_fmotor_peg + alsfrs_gmotor + alsfrs_resp,
         alsfrs_total_nopeg = alsfrs_bulbar + alsfrs_fmotor_nopeg + alsfrs_gmotor + alsfrs_resp
     )
+
+linkela_responses <- read_xlsx(
+    linkela_analytics_path,
+    sheet = "Formularis", skip = 19, na = "NULL"
+) |>
+    select(-c(
+        form_programmation_id,
+        fill_origin_id,
+        options
+    ))
+
+
+linkela_logins <- read_xlsx(
+    linkela_analytics_path,
+    sheet = "Logins", na = "NULL"
+) |>
+    rename(login_dtime = "login_at") |>
+    mutate(login_successful = as.logical(login_successful)) |>
+    drop_na(user_id, login_dtime)
