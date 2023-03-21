@@ -1,6 +1,7 @@
 library(ggplot2)
+library(writexl)
 
-source("src/icc.r")
+source("src/scores-icc.r")
 
 p <- ggplot(icc_overall, aes(x = score, y = value)) +
     geom_bar(stat = "identity") +
