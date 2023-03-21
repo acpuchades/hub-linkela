@@ -23,7 +23,8 @@ alsfrs_scores_icc <- function(data, model = "oneway", type = "agreement") {
             score = c("Bulbar", "Fine motor", "Gross motor", "Respiratory", "Total")
         ) |>
         relocate(score, .before = everything()) |>
-        select(score, subjects, value, p.value, conf.level, lbound, ubound)
+        select(score, subjects, value, p.value, conf.level, lbound, ubound) |>
+        drop_na(value)
 }
 
 linkela_scores <- linkela_alsfrs |>
@@ -101,9 +102,6 @@ icc_by_age <- scores |>
     do(alsfrs_scores_icc(.))
 
 icc_by_kings <- scores |>
-    mutate(
-        kings_c = fct_lump_min(kings_c, min = 5)
-    ) |>
     group_by(kings_c) |>
     do(alsfrs_scores_icc(.))
 

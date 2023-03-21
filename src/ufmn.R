@@ -450,16 +450,16 @@ ufmn_functional <- ufmn_followups %>%
     alsfrs_gmotor = cama + caminar + subir_escaleras,
     alsfrs_resp = disnea + ortopnea + insuf_resp,
     alsfrs_total = alsfrs_bulbar + alsfrs_fmotor + alsfrs_gmotor + alsfrs_resp,
-    kings_c = case_when(
-      disnea == 0 | insuf_resp < 4 ~ 4, # 4B
-      indicacion_peg == TRUE ~ 4, # 4A
+    kings_c = factor(case_when(
+      disnea == 0 | insuf_resp < 4 ~ 4L, # 4B
+      indicacion_peg == TRUE ~ 4L, # 4A
       TRUE ~ {
         bulbar <- any(c(lenguaje, salivacion, deglucion) < 4)
         upper <- any(c(escritura, cortar_sin_peg) < 4)
         lower <- caminar < 4
         bulbar + upper + lower
       }
-    ),
+    )),
     mitos = factor(
       {
         walking_selfcare <- caminar <= 1 | vestido <= 1
