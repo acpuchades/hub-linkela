@@ -6,7 +6,7 @@ library(stringi)
 library(readr)
 library(tidyr)
 
-ufmn_database_path <- "data/formulario_2023-02-24.sqlite"
+ufmn_database_path <- "data/hub/formulario_2023-05-31.sqlite"
 
 ufmn_parse_na <- function(data, na_empty = FALSE) {
   if (na_empty) {
@@ -410,7 +410,7 @@ ufmn_respiratory <- DBI::dbReadTable(ufmn_db, "fun_res") %>%
   select(!c(id, created_datetime:updated_datetime)) %>%
   arrange(pid, fecha_visita)
 
-ufmn_functional <- DBI::dbReadTable(ufmn_db, "esc_val_ela") %>%
+ufmn_alsfrs <- DBI::dbReadTable(ufmn_db, "esc_val_ela") %>%
   rename(
     fecha_visita = fecha_visita_esc_val_ela,
     insuf_resp = insuficiencia_respiratoria,
@@ -425,13 +425,12 @@ ufmn_functional <- DBI::dbReadTable(ufmn_db, "esc_val_ela") %>%
   select(!c(id, total:total_bulbar, mitos, created_datetime:updated_datetime)) %>%
   filter(!if_all(lenguaje:insuf_resp, is.na))
 
-ufmn_followups <-
-  bind_rows(ufmn_functional, ufmn_respiratory, ufmn_nutrition) %>%
+ufmn_followups <- bind_rows(ufmn_alsfrs, ufmn_respiratory, ufmn_nutrition) %>%
   select(pid, fecha_visita) %>%
   distinct()
 
-ufmn_functional <- ufmn_followups %>%
-  left_join(ufmn_functional, by = c("pid", "fecha_visita")) %>%
+ufmn_alsfrs <- ufmn_followups %>%
+  left_join(ufmn_alsfrs, by = c("pid", "fecha_visita")) %>%
   left_join(
     ufmn_nutrition %>% select(pid, fecha_visita, indicacion_peg, portador_peg),
     by = c("pid", "fecha_visita")
@@ -475,5 +474,18 @@ ufmn_functional <- ufmn_followups %>%
   relocate(kings_r, .before = kings_c) %>%
   relocate(c(indicacion_peg, portador_peg), .after = fecha_visita) %>%
   arrange(pid, fecha_visita)
+
+ufmn_baseline <- ufmn_clinical %>%
+  select(pid, fecha_inicio_clinica) %>%
+  inner_join(
+    ufmn_alsfrs %>%
+      select(pid, fecha_visita, alsfrs_total) %>%
+      slice_min(fecha_visita, by = "pid"),
+    by = "pid"
+  ) %>%
+  mutate(
+    tiempo_evolucion = fecha_visita - fecha_inicio_clinica,
+    delta_fs = (48 - alsfrs_total) / (tiempo_evolucion / dmonths(1))
+  )
 
 DBI::dbDisconnect(ufmn_db)

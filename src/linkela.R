@@ -1,43 +1,57 @@
 library(readxl)
 library(tidyverse)
 
-linkela_users_path <- "data/2023.02.16_LinkELA_users_v5.xlsx"
-linkela_alsfrs_path <- "data/2023.02.14_LinkELA_Formulario-38.xlsx"
-linkela_analytics_path <- "data/2023.02.23_LinkELA_Analytics.xlsx"
+source("src/common.r")
 
-linkela_users <- read_xlsx(linkela_users_path, na = "NULL") |>
+linkela_users_path <- "data/linkela/Users.xlsx"
+linkela_alsfrs_path <- "data/linkela/form_38.xlsx"
+linkela_eat10_path <- "data/linkela/form_103.xlsx"
+linkela_roads_path <- "data/linkela/form_108.xlsx"
+
+linkela_analytics_path <- "data/linkela/Analytics.xlsx"
+linkela_alarms_path <- "data/linkela/Alarms.xlsx"
+
+linkela_parse_bool <- function(xs) {
+    xs %>% case_match(
+        "Yes" ~ TRUE,
+        "No" ~ FALSE
+    )
+}
+
+linkela_usuarios <- read_excel(linkela_users_path, na = "NULL") %>%
+    normalize_colnames() %>%
     mutate(
+        full_name = str_c(last_name, first_name, sep = ", "),
         birthdate = parse_date(birthdate),
         tax_number = str_replace(tax_number, "-", ""),
         last_login_at = parse_datetime(last_login_at),
         gender = factor(gender, labels = c("M", "F")),
-        cuidador = case_match(cuidador, "Yes" ~ TRUE, "No" ~ FALSE)
+        across(c(
+            cuidador, hospital_del_mar, prueba_piloto,
+            hospital_de_bellvitge, fundacion_miquel_valls
+        ), linkela_parse_bool)
     )
 
-linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
-    select(-starts_with("Pregunta sin etiqueta")) |>
+linkela_alsfrs <- read_excel(linkela_alsfrs_path, na = "NULL") |>
+    select(-starts_with("Pregunta sin etiqueta"), -starts_with("Formula MiToS graded")) %>%
+    rename_with(~ str_replace_all(.x, "</?[A-Za-z]+>", "")) %>%
+    rename_with(~ str_replace_all(.x, "&nbsp;", " ")) %>%
+    normalize_colnames() %>%
+    rename_with(~ str_replace(.x, "^x([0-9])", "q\\1")) %>%
     rename(
-        user_id = "Pacient",
-        departament = "Departament",
-        value_date = "Data Valor",
-        answer_date = "Data resposta",
-        speech = "1. Lenguaje",
-        salivation = "2. Salivación",
-        swallowing = "3. Tragar",
-        handwriting = "4. Escritura",
-        cutting_nopeg = "5a. Cortado de comida y uso de utensilios (pacientes sin gastrostomía)",
-        cutting_peg = "5b Cortar comida y manejo de utensilios (alternativo para pacientes con gastrostomía)",
-        dressing = "6. Vestido e higiene",
-        bed = "7. Girarse en la cama y ajustarse la ropa de la cama",
-        walking = "8. Andar",
-        stairs = "9. Subir escaleras",
-        dyspnea = "10.Disnea (sensación de falta de aire)",
-        orthopnea = "11.Ortopnea (falta de aire estando acostado)",
-        resp_insuf = "12.Insuficiencia respiratoria",
-    ) |>
+        q5a_cortar_nopeg = "q5a_cortado_de_comida_y_uso_de_utensilios_pacientes_sin_gastrostomia",
+        q5b_cortar_peg = "q5b_cortar_comida_y_manejo_de_utensilios_alternativo_para_pacientes_con_gastrostomia",
+        q6_vestido = "q6_vestido_e_higiene",
+        q7_girarse = "q7_girarse_en_la_cama_y_ajustarse_la_ropa_de_la_cama",
+        q8_caminar = "q8_andar",
+        q9_escaleras = "q9_subir_escaleras",
+        q10_disnea = "q10_disnea_sensacion_de_falta_de_aire",
+        q11_ortopnea = "q11_ortopnea_falta_de_aire_estando_acostado",
+        q12_insuf_resp = "q12_insuficiencia_respiratoria"
+    ) %>%
     mutate(
-        across(ends_with("_date"), \(x) parse_datetime(x, format = "%d/%m/%Y %H:%M:%S")),
-        speech = recode(speech,
+        across(starts_with("data_"), ~ parse_datetime(.x, format = "%d/%m/%Y %H:%M")),
+        q1_lenguaje = recode(q1_lenguaje,
             "Habla normal" = 4L,
             "Procesos del habla normales." = 4L,
             "Alteraciones en el habla detectables" = 3L,
@@ -47,7 +61,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Pérdida del habla útil." = 0L,
             "Sense resposta" = NA_integer_
         ),
-        salivation = recode(salivation,
+        q2_salivacion = recode(q2_salivacion,
             "Normal." = 4L,
             "Aunque leve, definitivo exceso de saliva en la boca, puede haber sialorrea nocturna mínima." = 3L,
             "Exceso de saliva leve (pero claro) en boca; posible babeo nocturno" = 3L,
@@ -56,7 +70,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Babeo marcado; que requiere uso de pañuelo constante" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        swallowing = recode(swallowing,
+        q3_tragar = recode(q3_tragar,
             "Hábitos de alimentación normales" = 4L,
             "Hábitos alimenticios normales." = 4L,
             "Problemas precoces para tragar (atragantamiento ocasional)" = 3L,
@@ -66,7 +80,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Alimentación exclusiva por sonda" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        handwriting = recode(handwriting,
+        q4_escritura = recode(q4_escritura,
             "Normal." = 4L,
             "Lenta; pero todas las palabras son legibles" = 3L,
             "Un poco lenta y torpe, todas las palabras son legibles." = 3L,
@@ -75,7 +89,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Incapaz de sostener el lápiz" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        cutting_nopeg = recode(cutting_nopeg,
+        q5a_cortar_nopeg = recode(q5a_cortar_nopeg,
             "Normal." = 4L,
             "Lento y torpe pero no precisa ayuda" = 3L,
             "Capaz de cortar la mayoría de los alimentos, torpe y lento; necesita alguna ayuda" = 2L,
@@ -85,7 +99,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Precisa ser alimentado por otra persona" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        cutting_peg = recode(cutting_peg,
+        q5b_cortar_peg = recode(q5b_cortar_peg,
             "Normal." = 4L,
             "Torpe, puede manejar todos los utensilios." = 3L,
             "Lento y torpe pero capaz de realizar todas las manipulaciones de forma independiente" = 3L,
@@ -94,11 +108,8 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Incapaz de realizar ningún aspecto de la tarea" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        cutting = case_when(
-            is.na(cutting_peg) ~ cutting_nopeg,
-            is.na(cutting_nopeg) ~ cutting_peg,
-        ),
-        dressing = recode(dressing,
+        q5_cortar = coalesce(q5a_cortar_nopeg, q5b_cortar_peg),
+        q6_vestido = recode(q6_vestido,
             "Normal." = 4L,
             "Cuidado personal independiente y completo, pero con mayor esfuerzo" = 3L,
             "Precisa asistencia intermitente o el uso de métodos sustitutivos" = 2L,
@@ -108,7 +119,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Dependencia completa" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        bed = recode(bed,
+        q7_girarse = recode(q7_girarse,
             "Normal." = 4L,
             "Algo lento y torpe, no necesita ayuda." = 3L,
             "Puede voltearse solo o ajustar las sábanas con dificultad." = 2L,
@@ -118,7 +129,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Dependiente de otra persona" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        walking = recode(walking,
+        q8_caminar = recode(q8_caminar,
             "Normal." = 4L,
             "Dificultades incipientes para caminar" = 3L,
             "Dificultad temprana para la deambulación." = 3L,
@@ -129,7 +140,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "No hay movimiento voluntario de piernas." = 0L,
             "Sense resposta" = NA_integer_
         ),
-        stairs = recode(stairs,
+        q9_escaleras = recode(q9_escaleras,
             "Normal" = 4L,
             "Lento." = 3L,
             "Lentamente" = 3L,
@@ -141,7 +152,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "No puede hacerlo" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        dyspnea = recode(dyspnea,
+        q10_disnea = recode(q10_disnea,
             "Ninguna." = 4L,
             "No" = 4L,
             "Ocurre solo cuando camina" = 3L,
@@ -151,7 +162,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Dificultad importante, se ha considerado el uso de soporte respiratorio o ventilatorio mecánico" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        orthopnea = recode(orthopnea,
+        q11_ortopnea = recode(q11_ortopnea,
             "Ninguna." = 4L,
             "Alguna dificultad para dormir por la noche. No necesita más de 2 almohadas" = 3L,
             "Necesita más de 2 almohadas para poder dormir" = 2L,
@@ -160,7 +171,7 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Incapaz de dormir por sensación de falta de aire" = 0L,
             "Sense resposta" = NA_integer_
         ),
-        resp_insuf = recode(resp_insuf,
+        q12_insuf_resp = recode(q12_insuf_resp,
             "No" = 4L,
             "Ninguna." = 4L,
             "Uso intermitente de BiPAP." = 3L,
@@ -170,36 +181,60 @@ linkela_alsfrs <- read_xlsx(linkela_alsfrs_path, na = "NULL") |>
             "Sense resposta" = NA_integer_
         )
     ) |>
-    relocate(
-        cutting,
-        .after = handwriting
-    ) |>
     rowwise() |>
     mutate(
-        alsfrs_bulbar = speech + salivation + swallowing,
-        alsfrs_fmotor_peg = handwriting + cutting_peg + dressing,
-        alsfrs_fmotor_nopeg = handwriting + cutting_nopeg + dressing,
-        alsfrs_gmotor = bed + walking + stairs,
-        alsfrs_resp = dyspnea + orthopnea + resp_insuf,
-        alsfrs_total_peg = alsfrs_bulbar + alsfrs_fmotor_peg + alsfrs_gmotor + alsfrs_resp,
-        alsfrs_total_nopeg = alsfrs_bulbar + alsfrs_fmotor_nopeg + alsfrs_gmotor + alsfrs_resp
+        total_bulbar = q1_lenguaje + q2_salivacion + q3_tragar,
+        total_fmotor_nopeg = q4_escritura + q5a_cortar_nopeg + q6_vestido,
+        total_fmotor_peg = q4_escritura + q5b_cortar_peg + q6_vestido,
+        total_gmotor = q7_girarse + q8_caminar + q9_escaleras,
+        total_resp = q10_disnea + q11_ortopnea + q12_insuf_resp,
+        total_peg = total_bulbar + total_fmotor_peg + total_gmotor + total_resp,
+        total_nopeg = total_bulbar + total_fmotor_nopeg + total_gmotor + total_resp
     )
 
-linkela_responses <- read_xlsx(
-    linkela_analytics_path,
-    sheet = "Formularis", skip = 19, na = "NULL"
-) |>
-    select(-c(
-        form_programmation_id,
-        fill_origin_id,
-        options
-    ))
+linkela_roads <- read_excel(linkela_roads_path, na = "Sense resposta") %>%
+    normalize_colnames() %>%
+    rename_with(~ str_replace(.x, "^x([0-9])", "q\\1"))
 
+linkela_eat10 <- read_excel(linkela_eat10_path, na = "NULL") %>%
+    rename_with(~ str_replace_all(.x, "</?[A-Za-z]+>", "")) %>%
+    normalize_colnames() %>%
+    select(-starts_with("formula")) %>%
+    rename(
+        q1_perder_peso = "mi_problema_para_tragar_me_ha_llevado_a_perder_peso",
+        q2_comer_fuera = "mi_problema_para_tragar_interfiere_con_mi_capacidad_para_comer_fuera_de_casa",
+        q3_tragar_liquidos = "tragar_liquidos_me_supone_un_esfuerzo_extra",
+        q4_tragar_solidos = "tragar_solidos_me_supone_un_esfuerzo_extra",
+        q5_tragar_pastillas = "tragar_pastillas_me_supone_un_esfuerzo_extra",
+        q6_dolor = "tragar_es_doloroso",
+        q7_placer = "el_placer_de_comer_se_ve_afectado_por_mi_problema_para_tragar",
+        q8_garganta = "cuando_trago_la_comida_se_pega_en_mi_garganta",
+        q9_tos = "toso_cuando_como",
+        q10_estres = "tragar_es_estresante"
+    ) %>%
+    mutate(
+        across(matches("^q[0-9]{1,2}_"), ~ {
+            .x <- as.integer(.x)
+            if_else(.x |> between(0, 4), .x, NA_integer_)
+        }),
+        puntuacion_total = (
+            q1_perder_peso + q2_comer_fuera + q3_tragar_liquidos +
+                q4_tragar_solidos + q5_tragar_pastillas + q6_dolor +
+                q7_placer + q8_garganta + q9_tos + q10_estres
+        )
+    )
 
-linkela_logins <- read_xlsx(
-    linkela_analytics_path,
-    sheet = "Logins", na = "NULL"
-) |>
-    rename(login_dtime = "login_at") |>
-    mutate(login_successful = as.logical(login_successful)) |>
-    drop_na(user_id, login_dtime)
+linkela_logins <- read_excel(linkela_analytics_path,
+    sheet = "Logins", skip = 4, na = "NULL"
+) %>%
+    normalize_colnames()
+
+linkela_respuestas <- read_excel(linkela_analytics_path,
+    sheet = "Formularis", skip = 10, na = "NULL"
+) %>%
+    normalize_colnames() %>%
+    select(-form_programmation_id, -fill_origin_id) %>%
+    mutate(across(ends_with("_date"), ~ parse_date_time(.x, "Ymd HMS")))
+
+linkela_alarmas <- read_excel(linkela_alarms_path, skip = 18, na = "NULL") %>%
+    normalize_colnames()
