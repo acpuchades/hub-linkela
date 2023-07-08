@@ -8,7 +8,6 @@ source("src/pacientes.r")
 palette <- brewer.pal(8, "Pastel1")
 
 alarmas_linkela <- linkela_alarmas %>%
-    rename(id_linkela = id_del_usuario) %>%
     inner_join(
         pacientes_linkela %>% select(id_linkela, id_paciente),
         by = "id_linkela"

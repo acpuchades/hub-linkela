@@ -39,6 +39,11 @@ linkela_alsfrs <- read_excel(linkela_alsfrs_path, na = "NULL") |>
     rename_with(~ str_replace_all(.x, "</?[A-Za-z]+>", "")) %>%
     rename_with(~ str_replace_all(.x, "&nbsp;", " ")) %>%
     normalize_colnames() %>%
+    inner_join(
+        linkela_usuarios %>% select(id_linkela = "id", full_name),
+        by = c(pacient = "full_name")
+    ) %>%
+    select(-pacient) %>%
     rename_with(~ str_replace(.x, "^x([0-9])", "q\\1")) %>%
     rename(
         q5a_cortar_nopeg = "q5a_cortado_de_comida_y_uso_de_utensilios_pacientes_sin_gastrostomia",
@@ -186,13 +191,14 @@ linkela_alsfrs <- read_excel(linkela_alsfrs_path, na = "NULL") |>
     rowwise() |>
     mutate(
         total_bulbar = q1_lenguaje + q2_salivacion + q3_tragar,
-        total_fmotor_nopeg = q4_escritura + q5a_cortar_nopeg + q6_vestido,
-        total_fmotor_peg = q4_escritura + q5b_cortar_peg + q6_vestido,
-        total_gmotor = q7_girarse + q8_caminar + q9_escaleras,
-        total_resp = q10_disnea + q11_ortopnea + q12_insuf_resp,
-        total_peg = total_bulbar + total_fmotor_peg + total_gmotor + total_resp,
-        total_nopeg = total_bulbar + total_fmotor_nopeg + total_gmotor + total_resp
-    )
+        total_motor_fino_nopeg = q4_escritura + q5a_cortar_nopeg + q6_vestido,
+        total_motor_fino_peg = q4_escritura + q5b_cortar_peg + q6_vestido,
+        total_motor_grosero = q7_girarse + q8_caminar + q9_escaleras,
+        total_respiratorio = q10_disnea + q11_ortopnea + q12_insuf_resp,
+        total_peg = total_bulbar + total_motor_fino_peg + total_motor_grosero + total_respiratorio,
+        total_nopeg = total_bulbar + total_motor_fino_nopeg + total_motor_grosero + total_respiratorio
+    ) |>
+    ungroup()
 
 linkela_roads <- read_excel(linkela_roads_path, na = "Sense resposta") %>%
     normalize_colnames() %>%
@@ -229,7 +235,8 @@ linkela_eat10 <- read_excel(linkela_eat10_path, na = "NULL") %>%
 linkela_logins <- read_excel(linkela_analytics_path,
     sheet = "Logins", skip = 4, na = "NULL"
 ) %>%
-    normalize_colnames()
+    normalize_colnames() %>%
+    rename(id_linkela = user_id)
 
 linkela_respuestas <- read_excel(linkela_analytics_path,
     sheet = "Formularis", skip = 10, na = "NULL"
@@ -237,11 +244,13 @@ linkela_respuestas <- read_excel(linkela_analytics_path,
     normalize_colnames() %>%
     filter(form_id %in% linkela_enabled_forms) %>%
     select(-form_programmation_id, -fill_origin_id) %>%
+    rename(id_linkela = user_id) %>%
     mutate(across(ends_with("_date"), ~ parse_date_time(.x, "Ymd HMS")))
 
 linkela_alarmas <- read_excel(linkela_alarms_path, skip = 18, na = "NULL") %>%
     normalize_colnames() %>%
     filter(id_del_cuestionario %in% linkela_enabled_forms) %>%
+    rename(id_linkela = id_del_usuario) %>%
     mutate(nombre_del_cuestionario = case_match(
         id_del_cuestionario,
         35 ~ "PNEUMO SINTOMAS",

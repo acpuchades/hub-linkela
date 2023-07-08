@@ -67,15 +67,15 @@ pacientes_linkela <- bind_rows(
     slice_head(n = 1, by = id_linkela) %>%
     left_join(
         linkela_logins %>%
-            select(user_id, fecha_login = "login_at") %>%
-            slice_min(fecha_login, by = user_id, with_ties = FALSE, na_rm = TRUE),
-        by = c(id_linkela = "user_id")
+            select(id_linkela, fecha_login = "login_at") %>%
+            slice_min(fecha_login, by = id_linkela, with_ties = FALSE, na_rm = TRUE),
+        by = "id_linkela"
     ) %>%
     left_join(
         linkela_respuestas %>%
-            select(user_id, fecha_inicio_formulario = "start_date") %>%
-            slice_min(fecha_inicio_formulario, by = user_id, with_ties = FALSE, na_rm = TRUE),
-        by = c(id_linkela = "user_id")
+            select(id_linkela, fecha_inicio_formulario = "start_date") %>%
+            slice_min(fecha_inicio_formulario, by = id_linkela, with_ties = FALSE, na_rm = TRUE),
+        by = "id_linkela"
     ) %>%
     mutate(
         fecha_primer_login_linkela = as_date(fecha_login),
