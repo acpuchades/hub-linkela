@@ -429,6 +429,14 @@ ufmn_respiratory <- DBI::dbReadTable(ufmn_db, "fun_res") %>%
   select(!c(created_datetime:updated_datetime)) %>%
   arrange(id_paciente, fecha_visita)
 
+ufmn_portador_peg <- ufmn_nutrition %>%
+  select(id_paciente, inicio_periodo = "fecha_visita", portador_peg) %>%
+  arrange(id_paciente, inicio_periodo) %>%
+  group_by(id_paciente) %>%
+  mutate(fin_periodo = lead(inicio_periodo)) %>%
+  fill(portador_peg) %>%
+  ungroup()
+
 ufmn_alsfrs <- DBI::dbReadTable(ufmn_db, "esc_val_ela") %>%
   rename(
     id_visita = id,
@@ -468,8 +476,8 @@ ufmn_alsfrs <- ufmn_followups %>%
       FALSE ~ escritura + cortar_sin_peg + vestido,
     ),
     total_motor_grosero = cama + caminar + subir_escaleras,
-    total_resp = disnea + ortopnea + insuf_resp,
-    total = total_bulbar + total_motor_fino + total_motor_grosero + total_resp,
+    total_respiratorio = disnea + ortopnea + insuf_resp,
+    total = total_bulbar + total_motor_fino + total_motor_grosero + total_respiratorio,
     kings_c = factor(
       case_when(
         disnea == 0 | insuf_resp < 4 ~ 4L, # 4B

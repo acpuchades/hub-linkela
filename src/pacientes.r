@@ -26,7 +26,7 @@ pacientes <- ufmn_patients %>%
         by = "id_paciente"
     ) %>%
     mutate(
-        sexo = factor(sexo, levels = c("Male", "Female"), labels = c("M", "F")),
+        sexo = factor(sexo, levels = c("Male", "Female")),
         edad_inicio = floor((fecha_inicio_clinica - fecha_nacimiento) / dyears(1)),
         edad_actual = floor((today() - fecha_nacimiento) / dyears(1)),
         mutacion_c9 = estudio_gen_c9 == "Alterado",
