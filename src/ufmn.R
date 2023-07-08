@@ -1,5 +1,6 @@
 library(dplyr)
 library(magrittr)
+library(lubridate)
 library(purrr)
 library(stringr)
 library(stringi)
@@ -239,11 +240,24 @@ ufmn_parse_peg_usage <- function(data) {
     ), ordered = TRUE)
 }
 
+ufmn_calculate_stage_times <- function(data, id, time, stage, values) {
+  data %>%
+    distinct({{ id }}) %>%
+    cross_join(tibble({{ stage }} := values)) %>%
+    bind_rows(data %>% select({{ id }}, {{ time }}, {{ stage }})) %>%
+    slice_min({{ time }}, by = c({{ id }}, {{ stage }}), n = 1, with_ties = FALSE) %>%
+    group_by({{ id }}) %>%
+    arrange({{ stage }}, .by_group = TRUE) %>%
+    fill({{ time }}, .direction = "up") %>%
+    ungroup()
+}
+
 ufmn_db <- DBI::dbConnect(RSQLite::SQLite(), ufmn_database_path)
 
 ufmn_patients <- DBI::dbReadTable(ufmn_db, "pacientes") %>%
   select(!c(id, created_datetime:updated_datetime)) %>%
   rename(
+    id_paciente = pid,
     situacion_laboral_al_inicio = situacion_laboral_actual,
     situacion_laboral_al_inicio_otro = situacion_laboral_actual_otra,
     ultima_ocupacion_al_inicio = ultima_ocupacion,
@@ -266,6 +280,7 @@ ufmn_patients <- DBI::dbReadTable(ufmn_db, "pacientes") %>%
 ufmn_clinical <- DBI::dbReadTable(ufmn_db, "datos_clinicos") %>%
   select(!c(estudio_genetico_c9:estudio_genetico_sod1, created_datetime:updated_datetime)) %>%
   rename(
+    id_paciente = pid,
     fecha_primera_visita = fecha_visita_datos_clinicos,
     fecha_diagnostico = fecha_diagnostico_ELA,
     antecedentes_otros = otros_antecedentes_de_interes,
@@ -326,10 +341,12 @@ ufmn_clinical <- DBI::dbReadTable(ufmn_db, "datos_clinicos") %>%
   ) %>%
   relocate(estudio_gen_otros, .after = everything()) %>%
   relocate(ends_with("riluzol"), .after = everything()) %>%
-  rows_delete(tibble(pid = "9342fe7c-d949-11e9-842a-ebf9c1d8fdac"), by = "pid")
+  rows_delete(tibble(id_paciente = "9342fe7c-d949-11e9-842a-ebf9c1d8fdac"), by = "id_paciente")
 
 ufmn_nutrition <- DBI::dbReadTable(ufmn_db, "datos_antro") %>%
   rename(
+    id_visita = id,
+    id_paciente = pid,
     fecha_visita = fecha_visita_datos_antro,
     imc = imc_actual,
     fecha_inicio_supl_oral = fecha_suplementacion_nutricional,
@@ -339,12 +356,12 @@ ufmn_nutrition <- DBI::dbReadTable(ufmn_db, "datos_antro") %>%
     supl_oral = suplementacion_nutricional_oral,
     supl_enteral = suplementacion_nutricional_entera,
   ) %>%
-  drop_na(pid, fecha_visita) %>%
-  rows_update(tibble(id = "40c68842-eeb1-4cd2-a0d8-c5cbc839730c", fecha_visita = NA), by = "id") %>% # was '99-99-9999'
-  rows_update(tibble(id = "67e615f4-5f01-11eb-a21b-8316bff80df0", fecha_visita = "03-12-2021"), by = "id") %>% # was 03-12-20219
-  rows_update(tibble(id = "f9054526-1dcc-11eb-bb4a-9745fc970131", fecha_indicacion_peg = "23-10-2020"), by = "id") %>% # was 23-10-20020
-  rows_update(tibble(id = "8c5b0f46-df7a-11e9-9c30-274ab37b3217", fecha_indicacion_peg = "20-07-3018"), by = "id") %>% # was 20-07-3018
-  rows_update(tibble(id = "eb700688-3dfe-11eb-9383-d3a3b2195eff", fecha_complicacion_peg = "22-11-2020"), by = "id") %>% # was 22-11-202
+  drop_na(id_paciente, fecha_visita) %>%
+  rows_update(tibble(id_visita = "40c68842-eeb1-4cd2-a0d8-c5cbc839730c", fecha_visita = NA), by = "id_visita") %>% # was '99-99-9999'
+  rows_update(tibble(id_visita = "67e615f4-5f01-11eb-a21b-8316bff80df0", fecha_visita = "03-12-2021"), by = "id_visita") %>% # was 03-12-20219
+  rows_update(tibble(id_visita = "f9054526-1dcc-11eb-bb4a-9745fc970131", fecha_indicacion_peg = "23-10-2020"), by = "id_visita") %>% # was 23-10-20020
+  rows_update(tibble(id_visita = "8c5b0f46-df7a-11e9-9c30-274ab37b3217", fecha_indicacion_peg = "20-07-3018"), by = "id_visita") %>% # was 20-07-3018
+  rows_update(tibble(id_visita = "eb700688-3dfe-11eb-9383-d3a3b2195eff", fecha_complicacion_peg = "22-11-2020"), by = "id_visita") %>% # was 22-11-202
   mutate(across(starts_with("fecha"), \(x) ifelse(x == "29-02-2015", "28-02-2015", x))) %>%
   mutate(across(everything(), ufmn_parse_na),
     across(starts_with("fecha"), ufmn_parse_date),
@@ -367,22 +384,24 @@ ufmn_nutrition <- DBI::dbReadTable(ufmn_db, "datos_antro") %>%
     uso_peg = ufmn_parse_peg_usage(uso_peg),
     disfagia = ufmn_parse_dysphagia(disfagia)
   ) %>%
-  select(!c(id, created_datetime:updated_datetime)) %>%
-  arrange(pid, fecha_visita)
+  select(!c(created_datetime:updated_datetime)) %>%
+  arrange(id_paciente, fecha_visita)
 
 ufmn_respiratory <- DBI::dbReadTable(ufmn_db, "fun_res") %>%
   rename(
+    id_visita = id,
+    id_paciente = pid,
     fecha_visita = fecha_visita_fun_res,
     sintomas_hipoventilacion_nocturna = sintomas_sintomas_de_hipoventilacion_nocturna,
     tipo_patologia_respiratoria_intersticial = tipo_patologia_respiratoria_patologia_instersticial,
     sas_apneas_no_claramente_obstructivas = sas_apneas_no_claramanete_obstructivas,
     indicacion_vmni = vmni_indicacion,
   ) %>%
-  drop_na(pid, fecha_visita) %>%
-  rows_update(tibble(id = "c2049bdf-4a91-43e0-b6c4-f770881b7499", fecha_visita = NA), by = "id") %>% # was 99-99-9999
-  rows_update(tibble(id = "31f94d2a-fb08-11e9-b780-81f732616a71", odi3 = NA), by = "id") %>% # was 17/7
-  rows_update(tibble(id = "a3608f72-82eb-11e9-aed7-57f320d0dba4", fecha_realizacion_polisomnografia = NA), by = "id") %>% # was 14
-  rows_update(tibble(id = "f508e4b8-db93-11e9-b372-090a91bd3693", fecha_realizacion_polisomnografia = NA), by = "id") %>% # was 14
+  drop_na(id_paciente, fecha_visita) %>%
+  rows_update(tibble(id_visita = "c2049bdf-4a91-43e0-b6c4-f770881b7499", fecha_visita = NA), by = "id_visita") %>% # was 99-99-9999
+  rows_update(tibble(id_visita = "31f94d2a-fb08-11e9-b780-81f732616a71", odi3 = NA), by = "id_visita") %>% # was 17/7
+  rows_update(tibble(id_visita = "a3608f72-82eb-11e9-aed7-57f320d0dba4", fecha_realizacion_polisomnografia = NA), by = "id_visita") %>% # was 14
+  rows_update(tibble(id_visita = "f508e4b8-db93-11e9-b372-090a91bd3693", fecha_realizacion_polisomnografia = NA), by = "id_visita") %>% # was 14
   mutate(
     across(
       !c(ends_with("_cual"), cumplimiento_cpap),
@@ -407,58 +426,63 @@ ufmn_respiratory <- DBI::dbReadTable(ufmn_db, "fun_res") %>%
     pim_por_debajo_del_umbral = pim == "<60",
     sao2_media_por_debajo_del_umbral = sao2_media == "<90"
   ) %>%
-  select(!c(id, created_datetime:updated_datetime)) %>%
-  arrange(pid, fecha_visita)
+  select(!c(created_datetime:updated_datetime)) %>%
+  arrange(id_paciente, fecha_visita)
 
 ufmn_alsfrs <- DBI::dbReadTable(ufmn_db, "esc_val_ela") %>%
   rename(
+    id_visita = id,
+    id_paciente = pid,
     fecha_visita = fecha_visita_esc_val_ela,
     insuf_resp = insuficiencia_respiratoria,
     kings_r = kings
   ) %>%
-  drop_na(pid, fecha_visita) %>%
+  drop_na(id_paciente, fecha_visita) %>%
   mutate(across(everything(), ufmn_parse_na)) %>%
   mutate(
     across(lenguaje:insuf_resp, parse_integer),
     fecha_visita = ufmn_parse_date(fecha_visita),
   ) %>%
-  select(!c(id, total:total_bulbar, mitos, created_datetime:updated_datetime)) %>%
+  select(!c(total:total_bulbar, mitos, created_datetime:updated_datetime)) %>%
   filter(!if_all(lenguaje:insuf_resp, is.na))
 
 ufmn_followups <- bind_rows(ufmn_alsfrs, ufmn_respiratory, ufmn_nutrition) %>%
-  select(pid, fecha_visita) %>%
+  select(id_paciente, fecha_visita) %>%
   distinct()
 
 ufmn_alsfrs <- ufmn_followups %>%
-  left_join(ufmn_alsfrs, by = c("pid", "fecha_visita")) %>%
+  left_join(ufmn_alsfrs, by = c("id_paciente", "fecha_visita")) %>%
   left_join(
-    ufmn_nutrition %>% select(pid, fecha_visita, indicacion_peg, portador_peg),
-    by = c("pid", "fecha_visita")
+    ufmn_nutrition %>% select(id_paciente, fecha_visita, indicacion_peg, portador_peg),
+    by = c("id_paciente", "fecha_visita")
   ) %>%
-  group_by(pid) %>%
+  group_by(id_paciente) %>%
   arrange(fecha_visita, .by_group = TRUE) %>%
   fill(portador_peg, indicacion_peg) %>%
   ungroup() %>%
   mutate(
-    alsfrs_bulbar = lenguaje + salivacion + deglucion,
-    alsfrs_fmotor = case_match(
+    total_bulbar = lenguaje + salivacion + deglucion,
+    total_motor_fino = case_match(
       portador_peg,
       TRUE ~ escritura + cortar_con_peg + vestido,
       FALSE ~ escritura + cortar_sin_peg + vestido,
     ),
-    alsfrs_gmotor = cama + caminar + subir_escaleras,
-    alsfrs_resp = disnea + ortopnea + insuf_resp,
-    alsfrs_total = alsfrs_bulbar + alsfrs_fmotor + alsfrs_gmotor + alsfrs_resp,
-    kings_c = factor(case_when(
-      disnea == 0 | insuf_resp < 4 ~ 4L, # 4B
-      indicacion_peg == TRUE ~ 4L, # 4A
-      TRUE ~ {
-        bulbar <- any(c(lenguaje, salivacion, deglucion) < 4)
-        upper <- any(c(escritura, cortar_sin_peg) < 4)
-        lower <- caminar < 4
-        bulbar + upper + lower
-      }
-    )),
+    total_motor_grosero = cama + caminar + subir_escaleras,
+    total_resp = disnea + ortopnea + insuf_resp,
+    total = total_bulbar + total_motor_fino + total_motor_grosero + total_resp,
+    kings_c = factor(
+      case_when(
+        disnea == 0 | insuf_resp < 4 ~ 4L, # 4B
+        indicacion_peg == TRUE ~ 4L, # 4A
+        TRUE ~ {
+          bulbar <- any(c(lenguaje, salivacion, deglucion) < 4)
+          upper <- any(c(escritura, cortar_sin_peg) < 4)
+          lower <- caminar < 4
+          bulbar + upper + lower
+        }
+      ),
+      levels = 1:5, ordered = TRUE
+    ),
     mitos = factor(
       {
         walking_selfcare <- caminar <= 1 | vestido <= 1
@@ -467,25 +491,42 @@ ufmn_alsfrs <- ufmn_followups %>%
         breathing <- disnea <= 1 | insuf_resp <= 2
         walking_selfcare + swallowing + communication + breathing
       },
+      levels = 1:5,
       ordered = TRUE
     )
   ) %>%
   filter(!if_all(lenguaje:insuf_resp, is.na)) %>%
   relocate(kings_r, .before = kings_c) %>%
   relocate(c(indicacion_peg, portador_peg), .after = fecha_visita) %>%
-  arrange(pid, fecha_visita)
+  arrange(id_paciente, fecha_visita)
 
 ufmn_baseline <- ufmn_clinical %>%
-  select(pid, fecha_inicio_clinica) %>%
+  select(id_paciente, fecha_inicio_clinica) %>%
   inner_join(
     ufmn_alsfrs %>%
-      select(pid, fecha_visita, alsfrs_total) %>%
-      slice_min(fecha_visita, by = "pid"),
-    by = "pid"
+      select(id_paciente, fecha_visita, total) %>%
+      slice_min(fecha_visita, by = "id_paciente"),
+    by = "id_paciente"
   ) %>%
   mutate(
     tiempo_evolucion = fecha_visita - fecha_inicio_clinica,
-    delta_fs = (48 - alsfrs_total) / (tiempo_evolucion / dmonths(1))
+    delta_fs = (48 - total) / (tiempo_evolucion / dmonths(1))
   )
+
+ufmn_kings <- ufmn_alsfrs %>%
+  select(id_paciente, fecha_visita, kings = kings_c) %>%
+  drop_na() %>%
+  mutate(kings = as.numeric(kings)) %>%
+  ufmn_calculate_stage_times(id_paciente, fecha_visita, kings, 1:5) %>%
+  mutate(kings = factor(kings, levels = 1:5, ordered = TRUE)) %>%
+  pivot_wider(names_from = kings, values_from = fecha_visita, names_prefix = "kings_")
+
+ufmn_mitos <- ufmn_alsfrs %>%
+  select(id_paciente, fecha_visita, mitos) %>%
+  drop_na() %>%
+  mutate(mitos = as.numeric(mitos)) %>%
+  ufmn_calculate_stage_times(id_paciente, fecha_visita, mitos, 1:5) %>%
+  mutate(mitos = factor(mitos, levels = 1:5, ordered = TRUE)) %>%
+  pivot_wider(names_from = mitos, values_from = fecha_visita, names_prefix = "mitos_")
 
 DBI::dbDisconnect(ufmn_db)

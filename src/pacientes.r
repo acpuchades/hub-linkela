@@ -8,22 +8,22 @@ source("src/ufmn.r")
 
 pacientes <- ufmn_patients %>%
     select(
-        pid, nhc, cip, dni, fecha_nacimiento, sexo,
+        id_paciente, nhc, cip, dni, fecha_nacimiento, sexo,
         telefono_fijo, telefono_movil, fecha_exitus
     ) %>%
     inner_join(
         ufmn_clinical %>% select(
-            pid, fecha_inicio_clinica, fecha_diagnostico,
+            id_paciente, fecha_inicio_clinica, fecha_diagnostico,
             fenotipo_al_diagnostico, patron_debilidad_inicial,
             fumador, historia_familiar_motoneurona, resultado_estudio_cognitivo,
             estudio_gen_c9, estudio_gen_sod1, estudio_gen_atxn2,
         ),
-        by = "pid"
+        by = "id_paciente"
     ) %>%
     filter(fecha_diagnostico >= sectecnica_origin_date) %>%
     inner_join(
-        ufmn_baseline %>% select(pid, delta_fs),
-        by = "pid"
+        ufmn_baseline %>% select(id_paciente, delta_fs),
+        by = "id_paciente"
     ) %>%
     mutate(
         sexo = factor(sexo, levels = c("Male", "Female"), labels = c("M", "F")),
@@ -63,18 +63,19 @@ pacientes_linkela <- bind_rows(
     pacientes_linkela_fijo,
     pacientes_linkela_movil
 ) %>%
-    slice_head(n = 1, by = id) %>%
+    rename(id_linkela = id) %>%
+    slice_head(n = 1, by = id_linkela) %>%
     left_join(
         linkela_logins %>%
             select(user_id, fecha_login = "login_at") %>%
             slice_min(fecha_login, by = user_id, with_ties = FALSE, na_rm = TRUE),
-        by = c(id = "user_id")
+        by = c(id_linkela = "user_id")
     ) %>%
     left_join(
         linkela_respuestas %>%
             select(user_id, fecha_inicio_formulario = "start_date") %>%
             slice_min(fecha_inicio_formulario, by = user_id, with_ties = FALSE, na_rm = TRUE),
-        by = c(id = "user_id")
+        by = c(id_linkela = "user_id")
     ) %>%
     mutate(
         fecha_primer_login_linkela = as_date(fecha_login),
@@ -90,8 +91,8 @@ pacientes_linkela <- bind_rows(
 pacientes %<>%
     left_join(
         pacientes_linkela %>%
-            select(pid, fecha_primer_login_linkela, fecha_primer_formulario_linkela),
-        by = "pid"
+            select(id_paciente, fecha_primer_login_linkela, fecha_primer_formulario_linkela),
+        by = "id_paciente"
     ) %>%
     mutate(
         grupo = factor(if_else(is.na(fecha_primer_formulario_linkela), "Control", "LinkELA"))
