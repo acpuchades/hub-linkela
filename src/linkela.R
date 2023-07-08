@@ -11,6 +11,8 @@ linkela_roads_path <- "data/linkela/form_108.xlsx"
 linkela_analytics_path <- "data/linkela/Analytics.xlsx"
 linkela_alarms_path <- "data/linkela/Alarms.xlsx"
 
+linkela_enabled_forms <- c(35, 38, 103, 108)
+
 linkela_parse_bool <- function(xs) {
     xs %>% case_match(
         "Yes" ~ TRUE,
@@ -233,8 +235,17 @@ linkela_respuestas <- read_excel(linkela_analytics_path,
     sheet = "Formularis", skip = 10, na = "NULL"
 ) %>%
     normalize_colnames() %>%
+    filter(form_id %in% linkela_enabled_forms) %>%
     select(-form_programmation_id, -fill_origin_id) %>%
     mutate(across(ends_with("_date"), ~ parse_date_time(.x, "Ymd HMS")))
 
 linkela_alarmas <- read_excel(linkela_alarms_path, skip = 18, na = "NULL") %>%
-    normalize_colnames()
+    normalize_colnames() %>%
+    filter(id_del_cuestionario %in% linkela_enabled_forms) %>%
+    mutate(nombre_del_cuestionario = case_match(
+        id_del_cuestionario,
+        35 ~ "PNEUMO SINTOMAS",
+        38 ~ "ALS-FRS",
+        103 ~ "EAT-10",
+        108 ~ "ROADS"
+    ))
